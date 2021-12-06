@@ -1,0 +1,89 @@
+; HM NIS Edit Wizard helper defines
+^!define PRODUCT_NAME ${SRH-project}
+^!define PRODUCT_VERSION ${SRH-version}
+^!define PRODUCT_PUBLISHER "Hanshu Inc."
+
+; MUI 1.67 compatible ------
+^!include "MUI.nsh"
+
+; MUI Settings
+^!define MUI_ABORTWARNING
+^!define MUI_ICON "icon.ico"
+
+; Welcome page
+^!insertmacro MUI_PAGE_WELCOME
+; License page
+^!insertmacro MUI_PAGE_LICENSE "Licence.txt"
+; Directory page
+^!insertmacro MUI_PAGE_DIRECTORY
+; Instfiles page
+^!insertmacro MUI_PAGE_INSTFILES
+; Finish page
+^!define MUI_FINISHPAGE_RUN "$INSTDIR\vcredist_x64.exe"
+^!define MUI_FINISHPAGE_RUN_FUNCTION "LaunchLink"
+^!insertmacro MUI_PAGE_FINISH
+
+; Language files
+^!insertmacro MUI_LANGUAGE "SimpChinese"
+
+;获取管理员权限
+RequestExecutionLevel admin
+
+Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
+;项目输出的名字
+OutFile "DL-${PRODUCT_NAME}-${PRODUCT_VERSION}-releaseforwindows-${SRH-date}.exe"
+;项目安装的目录
+InstallDir "$PROGRAMFILES\${PRODUCT_NAME}"
+ShowInstDetails show
+
+Section "MainSection" SEC01
+  SetOutPath "$PROGRAMFILES"
+  SetOverwrite ifnewer
+  File "SRH-Provider-Installer-master.7z"
+  Nsis7z::Extract "$PROGRAMFILES\SRH-Provider-Installer-master.7z"
+  Delete "$PROGRAMFILES\SRH-Provider-Installer-master.7z"
+  setOutPath "$INSTDIR"
+  WriteIniStr "$INSTDIR\${PRODUCT_NAME}.url" "InternetShortcut" "URL" "${PRODUCT_WEB_SITE}"
+  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Website.lnk" "$INSTDIR\${PRODUCT_NAME}.url"
+  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\uninst.exe"
+  ;后台运行REDIS服务
+  nsExec::ExecToLog 'cmd.exe /c cd "$INSTDIR\hs-redis" & redis-server.exe --service-install --service-name hs_redis_${PRODUCT_NAME} redis.windows-service.conf --loglevel verbose & net start hs_redis_${PRODUCT_NAME}'
+  ;启动mysql服务
+  nsExec::ExecToLog 'cmd.exe /c "$INSTDIR\hs-db-10.3.22-winx64\bin\mysqld" install hs_db_${PRODUCT_NAME}'
+  nsExec::ExecToLog 'cmd.exe /c net start hs_db_${PRODUCT_NAME}'
+  ;启动java相关服务
+  nsExec::ExecToLog 'cmd.exe /c "$INSTDIR\ng\${PRODUCT_NAME}WebServer.exe" install'
+  nsExec::ExecToLog 'cmd.exe /c net start ${PRODUCT_NAME}WebServer'
+  ;安装程序
+  Exec "$INSTDIR\vcredist_x64.exe"
+SectionEnd
+
+Section -Post
+  ;创建桌面快捷方式
+  CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe"
+SectionEnd
+
+;安装完成是否运行程序
+Function LaunchLink
+  ;Exec "$INSTDIR\pro_xxx.exe"
+FunctionEnd
+
+Section Uninstall
+  Delete "$INSTDIR\${PRODUCT_NAME}.url"
+  Delete "$INSTDIR\uninstall.exe"
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk"
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Website.lnk"
+  Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk"
+  ;nsExec::ExecToLog "start $INSTDIR\hs-server\server_uninstall.bat"
+  nsExec::ExecToLog "cmd.exe /c net stop hs_server_${PRODUCT_NAME}"
+  nsExec::ExecToLog "cmd.exe /c taskkill /f /im PMA*"
+  nsExec::ExecToLog "cmd.exe /c taskkill /f /im Comm*"
+  nsExec::ExecToLog "cmd.exe /c taskkill /f /im ui-api*"
+  nsExec::ExecToLog "cmd.exe /c sc delete ${PRODUCT_NAME}webserver"
+  nsExec::ExecToLog "cmd.exe /c net stop hs_db_${PRODUCT_NAME} & sc delete hs_db_${PRODUCT_NAME}"
+  nsExec::ExecToLog "cmd.exe /c net stop hs_redis_${PRODUCT_NAME} & sc delete hs_redis_${PRODUCT_NAME}"
+  RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
+  RMDir /r $INSTDIR
+  SetAutoClose true
+SectionEnd
